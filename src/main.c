@@ -1,19 +1,93 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+
+#include <sys/stat.h>
+#include <dlfcn.h>
 
 #define GLAD_GL_IMPLEMENTATION
 #include <glad/gl.h>
 
 #include <GLFW/glfw3.h>
 
+#include "render.h"
+
 #define WINDOW_TITLE  "OpenGL"
 #define WINDOW_WIDTH  480
 #define WINDOW_HEIGHT 360
 
+void load_code(render_t **render, void **lib, time_t *last_lib_mod_time)
+{
+    struct stat lib_stat;
+    if (stat("target/lib/librender.so", &lib_stat) == 0)
+        if (*last_lib_mod_time > 0
+                && (lib_stat.st_mtim.tv_sec <= *last_lib_mod_time
+                || lib_stat.st_size == 0))
+            return;
+
+    if (*lib != NULL)
+        dlclose(*lib);
+
+    void *new_lib = dlopen("target/lib/librender.so", RTLD_LAZY | RTLD_LOCAL);
+    if (new_lib == NULL) {
+        new_lib = dlopen("target/lib/librender-copy.so", RTLD_LAZY | RTLD_LOCAL);
+
+        if (new_lib == NULL) {
+            perror("Error");
+            printf("Can't load render copy library due \"%s\"\n", dlerror());
+            return;
+        }
+    } else {
+        FILE *lib_origin = fopen("target/lib/librender.so", "rb");
+        if (lib_origin == NULL) {
+            perror("Can't open library file to copy: ");
+            return;
+        }
+
+        FILE *lib_copy = fopen("target/lib/librender-copy.so", "wb");
+        if (lib_copy == NULL) {
+            perror("Can't open destination library file of copy: ");
+            return;
+        }
+
+        char bytes[128];
+        while (!feof(lib_origin)) {
+            int bytes_readed = fread(bytes, sizeof(char), sizeof bytes, lib_origin);
+            if (bytes_readed > 0)
+                fwrite(bytes, sizeof(char), bytes_readed, lib_copy);
+        }
+
+        fclose(lib_origin);
+        fclose(lib_copy);
+
+        *last_lib_mod_time = lib_stat.st_mtim.tv_sec;
+    }
+
+    *lib = new_lib;
+
+    dlerror();
+    render_t *new_render = (render_t *) dlsym(new_lib, "render");
+    if (new_render != NULL) {
+        if (*render != NULL)
+            new_render->data = (*render)->data;
+        else
+            new_render->data = NULL;
+    } else {
+        new_render = *render;
+        printf("Can't load render functions: %s\n", dlerror());
+    }
+
+    *render = new_render;
+}
+
 int main(void)
 {
     GLFWwindow *window = NULL;
+
+    render_t *render = NULL;
+    void *render_lib = NULL;
+    time_t render_lib_mod_time = 0;
 
     /* GLFW initialization */
     if (!glfwInit())
@@ -37,114 +111,22 @@ int main(void)
     /* OpenGL initialization */
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    // Vertices data
-    GLfloat vertices[] = {
-         0.0f, 0.5f, 0, 1, 0,
-         0.5f, 0.0f, 1, 0, 0,
-        -0.5f, 0.0f, 0, 0, 1,
-    };
-
-    // Vertex buffer object
-    GLuint vbo;
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    int status;
-
-    // Vertex shader
-    const char *vert_shader_source =
-        "#version 330\n"
-        "\n"
-        "layout (location = 0) in vec2 pos;\n"
-        "layout (location = 1) in vec3 col;\n"
-        "out vec3 vcol;\n"
-        "\n"
-        "void main() {\n"
-        "   vcol = col;\n"
-        "   gl_Position = vec4(pos, 0, 1);\n"
-        "}\n"
-        "\n";
-    GLuint vert_shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vert_shader, 1, &vert_shader_source, NULL);
-    glCompileShader(vert_shader);
-    glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &status);
-    if (status == GL_FALSE) {
-        char msg[1024];
-        glGetShaderInfoLog(vert_shader, sizeof msg, NULL, msg);
-        printf("Shader compilation error: %s\n", msg);
-    }
-
-    // Fragment shader
-    const char *frag_shader_source =
-        "#version 330\n"
-        "\n"
-        "in vec3 vcol;"
-        "out vec4 col;\n"
-        "\n"
-        "void main() {\n"
-        "    col = vec4(vcol, 1);"
-        "}\n"
-        "\n";
-    GLuint frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(frag_shader, 1, &frag_shader_source, NULL);
-    glCompileShader(frag_shader);
-    glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &status);
-    if (status == GL_FALSE) {
-        char msg[1024];
-        glGetShaderInfoLog(frag_shader, sizeof msg, NULL, msg);
-        printf("Shader compilation error: %s\n", msg);
-    }
-
-    // Program object
-    GLuint prog = glCreateProgram();
-    glAttachShader(prog, vert_shader);
-    glAttachShader(prog, frag_shader);
-    glLinkProgram(prog);
-    glGetProgramiv(prog, GL_LINK_STATUS, &status);
-    if (status == GL_FALSE) {
-        char msg[1024];
-        glGetProgramInfoLog(prog, sizeof msg, NULL, msg);
-        printf("Program link error: %s", msg);
-    }
-
-    glDetachShader(prog, vert_shader);
-    glDetachShader(prog, frag_shader);
-
-    glDeleteShader(vert_shader);
-    glDeleteShader(frag_shader);
-
-    // Vertex array object
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GLfloat) * 5, NULL);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(GLfloat) * 5, (void *)(sizeof(GLfloat) * 2));
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
     /* Main loop */
     while (!glfwWindowShouldClose(window)) {
+        load_code(&render, &render_lib, &render_lib_mod_time);
+        if (render->data == NULL)
+            render->data = render->init((GLADloadfunc) glfwGetProcAddress);
+
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glBindVertexArray(vao);
-        glUseProgram(prog);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-        glUseProgram(0);
-        glBindVertexArray(0);
+        render->draw(render->data);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    /* OpenGL de-initialization */
-    glDeleteProgram(prog);
-    glDeleteBuffers(1, &vbo);
+    render->terminate(render->data);
 
     /* GLFW de-initialization */
     glfwDestroyWindow(window);

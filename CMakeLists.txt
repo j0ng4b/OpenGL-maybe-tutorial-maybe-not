@@ -13,8 +13,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Change the output directory of some binary files
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/target/bin")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/target/libs")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/target/libs")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/target/lib")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/target/lib")
 
 # Build options
 option(USE_SYSTEM_GLFW "Enable the use of system installed GLFW." ON)
@@ -22,10 +22,19 @@ option(USE_SYSTEM_GLFW "Enable the use of system installed GLFW." ON)
 # Include directories
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# List source files
-file(GLOB SOURCES_FILES "src/*.c")
+# List app source files
+file(GLOB APP_SOURCES_FILES "src/*.c")
 
-add_executable(${PROJECT_NAME} ${SOURCES_FILES})
+# App executable
+add_executable(${PROJECT_NAME} ${APP_SOURCES_FILES})
+target_link_libraries(${PROJECT_NAME} dl)
+
+# List app source files
+file(GLOB LIB_SOURCES_FILES "lib/*.c")
+
+# Library
+add_library(render SHARED ${LIB_SOURCES_FILES})
+list(APPEND DYN_LIBS render)
 
 # Custom run target
 add_custom_target(run
@@ -34,7 +43,7 @@ add_custom_target(run
     COMMENT
         "Building and running the executable ${PROJECT_NAME}..."
     DEPENDS
-        ${PROJECT_NAME}
+        ${PROJECT_NAME} ${DYN_LIBS}
     WORKING_DIRECTORY
         ${CMAKE_CURRENT_SOURCE_DIR})
 
