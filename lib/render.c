@@ -1,4 +1,5 @@
 #include "render.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,8 +8,8 @@
 
 typedef struct state {
     GLuint vbo;
+    GLuint ebo;
     GLuint vao;
-
     GLuint program;
 } state_t;
 
@@ -23,13 +24,15 @@ void *render_init(GLADloadfunc loader)
 
     // Vertex buffer object
     glGenBuffers(1, &state->vbo);
+    glGenBuffers(1, &state->ebo);
 
     // Program object
-    state->program = glCreateProgram();
 
     // Vertex array object
     glGenVertexArrays(1, &state->vao);
     glBindVertexArray(state->vao);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->ebo);
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
 
     glEnableVertexAttribArray(0);
@@ -40,6 +43,7 @@ void *render_init(GLADloadfunc loader)
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     return (void *) state;
 }
@@ -49,16 +53,50 @@ void render_draw(void *data)
     state_t *state = (state_t *) data;
 
     // Vertices data
-    GLfloat vertices[] = {
-         0.0f, 0.5f, 1, 0, 0,
-         0.5f, 0.0f, 0, 1, 0,
-        -0.5f, 0.0f, 0, 0, 1,
+    GLfloat vertices[1845] = {
+        -0.7f, -0.5f, 0,0.7f,0,
+        +0.7f, -0.5f, 0,0.7f,0,
+        +0.7f, +0.5f, 0,0.7f,0,
+        -0.7f, +0.5f, 0,0.7f,0,
+
+        -0.5f, +0.0f, 1,1,0,
+        +0.0f, +0.3f, 1,1,0,
+        +0.5f, +0.0f, 1,1,0,
+        +0.0f, -0.3f, 1,1,0,
     };
+
+    GLuint indices[] = {
+        0, 1, 2,
+        0, 2, 3,
+
+        4, 5, 6,
+        4, 6, 7,
+    };
+
+    vertices[40] = 0;
+    vertices[41] = 0;
+
+    vertices[42] = 0;
+    vertices[43] = 0;
+    vertices[44] = 0.9f;
+
+    for (int i = 0; i < 360; i++) {
+        vertices[i * 5 + 45] = cosf(i * (180.0f / 3.14159265f)) / 5;
+        vertices[i * 5 + 46] = sinf(i * (180.0f / 3.14159265f)) / 5;
+
+        vertices[i * 5 + 47] = 0;
+        vertices[i * 5 + 48] = 0;
+        vertices[i * 5 + 49] = 0.9f;
+    }
 
     // Vertex buffer object
     glBindBuffer(GL_ARRAY_BUFFER, state->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof indices, indices, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     int status;
 
@@ -107,7 +145,6 @@ void render_draw(void *data)
     }
 
     // Program object
-    glDeleteProgram(state->program);
     state->program = glCreateProgram();
     glAttachShader(state->program, vshader);
     glAttachShader(state->program, fshader);
@@ -124,9 +161,14 @@ void render_draw(void *data)
 
     glBindVertexArray(state->vao);
     glUseProgram(state->program);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(GLuint), GL_UNSIGNED_INT, 0);
+    glDrawArrays(GL_TRIANGLE_FAN, 8, 360);
+
     glUseProgram(0);
     glBindVertexArray(0);
+
+    glDeleteProgram(state->program);
 }
 
 void render_terminate(void *data)

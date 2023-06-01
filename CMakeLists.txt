@@ -34,6 +34,8 @@ file(GLOB LIB_SOURCES_FILES "lib/*.c")
 
 # Library
 add_library(render SHARED ${LIB_SOURCES_FILES})
+target_link_libraries(render m)
+
 list(APPEND DYN_LIBS render)
 
 # Custom run target
