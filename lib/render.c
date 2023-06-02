@@ -1,10 +1,11 @@
-#include "render.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #define GLAD_GL_IMPLEMENTATION
 #include <glad/gl.h>
+
+#include "lib.h"
 
 typedef struct state {
     GLuint vbo;
@@ -13,14 +14,12 @@ typedef struct state {
     GLuint program;
 } state_t;
 
-void *render_init(GLADloadfunc loader)
+void render_init(lib_t *lib)
 {
     state_t *state = malloc(sizeof(state_t));
 
     if (state == NULL)
-        return NULL;
-
-    gladSetGLOnDemandLoader(loader);
+        return;
 
     // Vertex buffer object
     glGenBuffers(1, &state->vbo);
@@ -38,22 +37,23 @@ void *render_init(GLADloadfunc loader)
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(GLfloat) * 5, NULL);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(GLfloat) * 5, (void *)(sizeof(GLfloat) * 2));
+    glVertexAttribPointer(0, 2, GL_DOUBLE, GL_FALSE, sizeof(GLdouble) * 5, NULL);
+    glVertexAttribPointer(1, 3, GL_DOUBLE, GL_FALSE, sizeof(GLdouble) * 5, (void *)(sizeof(GLdouble) * 2));
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    return (void *) state;
+    lib->data = state;
+    lib->data_size = sizeof(state_t);
 }
 
-void render_draw(void *data)
+void render_load(lib_t *lib)
 {
-    state_t *state = (state_t *) data;
+    state_t *state = (state_t *) lib->data;
 
     // Vertices data
-    GLfloat vertices[1845] = {
+    GLdouble vertices[1855] = {
         -0.7f, -0.5f, 0,0.7f,0,
         +0.7f, -0.5f, 0,0.7f,0,
         +0.7f, +0.5f, 0,0.7f,0,
@@ -68,7 +68,6 @@ void render_draw(void *data)
     GLuint indices[] = {
         0, 1, 2,
         0, 2, 3,
-
         4, 5, 6,
         4, 6, 7,
     };
@@ -78,15 +77,15 @@ void render_draw(void *data)
 
     vertices[42] = 0;
     vertices[43] = 0;
-    vertices[44] = 0.9f;
+    vertices[44] = 1;
 
-    for (int i = 0; i < 360; i++) {
-        vertices[i * 5 + 45] = cosf(i * (180.0f / 3.14159265f)) / 5;
-        vertices[i * 5 + 46] = sinf(i * (180.0f / 3.14159265f)) / 5;
+    for (int i = 0; i <= 360; i++) {
+        vertices[i * 5 + 45] = cos(i * (3.1415926535897932 / 180.0)) / 5.0;
+        vertices[i * 5 + 46] = sin(i * (3.1415926535897932 / 180.0)) / 5.0;
 
         vertices[i * 5 + 47] = 0;
         vertices[i * 5 + 48] = 0;
-        vertices[i * 5 + 49] = 0.9f;
+        vertices[i * 5 + 49] = 0.75;
     }
 
     // Vertex buffer object
@@ -158,32 +157,36 @@ void render_draw(void *data)
 
     glDeleteShader(vshader);
     glDeleteShader(fshader);
+}
+
+void render_update(lib_t *lib)
+{
+    state_t *state = (state_t *) lib->data;
 
     glBindVertexArray(state->vao);
     glUseProgram(state->program);
 
-    glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(GLuint), GL_UNSIGNED_INT, 0);
-    glDrawArrays(GL_TRIANGLE_FAN, 8, 360);
+    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
+    glDrawArrays(GL_TRIANGLE_FAN, 8, 362);
 
     glUseProgram(0);
     glBindVertexArray(0);
-
-    glDeleteProgram(state->program);
 }
 
-void render_terminate(void *data)
+void render_unload(lib_t *lib)
 {
-    state_t *state = (state_t *) data;
-
-    glDeleteProgram(state->program);
-    glDeleteBuffers(1, &state->vbo);
-    glDeleteVertexArrays(1, &state->vao);
+    state_t *state = (state_t *) lib->data;
+    (void)state;
 }
 
-render_t render = {
-    render_init,
-    render_draw,
-    render_terminate,
-    NULL,
-};
+void render_deinit(lib_t *lib)
+{
+    free(lib->data);
+}
+
+lib_on_init(render_init);
+lib_on_load(render_load);
+lib_on_update(render_update);
+lib_on_unload(render_unload);
+lib_on_deinit(render_deinit);
 
