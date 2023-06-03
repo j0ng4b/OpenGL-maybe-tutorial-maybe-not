@@ -12,6 +12,8 @@ typedef struct state {
     GLuint ebo;
     GLuint vao;
     GLuint program;
+
+    GLint middle_point_uniform;
 } state_t;
 
 void render_init(lib_t *lib)
@@ -26,6 +28,7 @@ void render_init(lib_t *lib)
     glGenBuffers(1, &state->ebo);
 
     // Program object
+    state->program = glCreateProgram();
 
     // Vertex array object
     glGenVertexArrays(1, &state->vao);
@@ -50,6 +53,11 @@ void render_init(lib_t *lib)
 
 void render_load(lib_t *lib)
 {
+    if (lib->data_size != sizeof(state_t)) {
+        lib->data = realloc(lib->data, sizeof(state_t));
+        lib->data_size = sizeof(state_t);
+    }
+
     state_t *state = (state_t *) lib->data;
 
     // Vertices data
@@ -66,10 +74,8 @@ void render_load(lib_t *lib)
     };
 
     GLuint indices[] = {
-        0, 1, 2,
-        0, 2, 3,
-        4, 5, 6,
-        4, 6, 7,
+        8, 0, 1, 2, 3, 0,
+        8, 4, 5, 6, 7, 4,
     };
 
     vertices[40] = 0;
@@ -106,9 +112,13 @@ void render_load(lib_t *lib)
         "layout (location = 0) in vec2 pos;\n"
         "layout (location = 1) in vec3 col;\n"
         "out vec3 vcol;\n"
+        "uniform vec3 mpu;\n"
         "\n"
         "void main() {\n"
-        "   vcol = col;\n"
+        "   if (pos.x == 0.0 && pos.y == 0.0)\n"
+        "       vcol = mpu;\n"
+        "   else\n"
+        "       vcol = col;\n"
         "   gl_Position = vec4(pos, 0, 1);\n"
         "}\n"
         "\n";
@@ -130,7 +140,7 @@ void render_load(lib_t *lib)
         "out vec4 col;\n"
         "\n"
         "void main() {\n"
-        "    col = vec4(vcol, 1);"
+        "    col = vec4(vcol, 1);\n"
         "}\n"
         "\n";
     GLuint fshader = glCreateShader(GL_FRAGMENT_SHADER);
@@ -144,7 +154,9 @@ void render_load(lib_t *lib)
     }
 
     // Program object
+    glDeleteProgram(state->program);
     state->program = glCreateProgram();
+
     glAttachShader(state->program, vshader);
     glAttachShader(state->program, fshader);
     glLinkProgram(state->program);
@@ -157,6 +169,8 @@ void render_load(lib_t *lib)
 
     glDeleteShader(vshader);
     glDeleteShader(fshader);
+
+    state->middle_point_uniform = glGetUniformLocation(state->program, "mpu");
 }
 
 void render_update(lib_t *lib)
@@ -166,7 +180,13 @@ void render_update(lib_t *lib)
     glBindVertexArray(state->vao);
     glUseProgram(state->program);
 
-    glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, 0);
+    glUniform3f(state->middle_point_uniform, 0, 1, 0);
+    glDrawElements(GL_TRIANGLE_FAN, 6, GL_UNSIGNED_INT, 0);
+
+    glUniform3f(state->middle_point_uniform, 0.8, 0.8, 0);
+    glDrawElements(GL_TRIANGLE_FAN, 6, GL_UNSIGNED_INT, (void *)(sizeof(GLuint) * 6));
+
+    glUniform3f(state->middle_point_uniform, 0, 0, 1);
     glDrawArrays(GL_TRIANGLE_FAN, 8, 362);
 
     glUseProgram(0);
